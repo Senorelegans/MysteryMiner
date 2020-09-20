@@ -70,7 +70,7 @@ printf "\nYou've requested $SLURM_CPUS_ON_NODE core(s).\n"
 # fastqs should be zipped and renamed R1.fastq.gz for single end, 
 # or R1/R2.fastq.gz for paired end
 # --singleEnd is set to false if paired end data
-#######################################################################
+######################################################################
 nextflow run ${MAIN}/main.nf -resume \
         -profile slurm \
         -with-report -with-trace -with-timeline -with-dag flowchart.png \
@@ -89,3 +89,31 @@ nextflow run ${MAIN}/main.nf -resume \
         --singleEnd false \
         --unmappedPath ${PROJECT}/"unmapped"
 
+
+
+
+
+# ################################################################################################
+# # Test with chlamydia dataset
+# MAIN=/Users/mame5141/2019/biome/GIT
+# PROJECT=${MAIN}"/NF_OUT"
+# BIN=${MAIN}/bin
+
+# mkdir -p $PROJECT
+# nextflow run ${MAIN}/main.nf -resume \
+#         -profile slurm \
+#         -with-report -with-trace -with-timeline -with-dag flowchart.png \
+#         --bin ${BIN} \
+#         --workdir ${PROJECT}/temp \
+#         --outdir ${PROJECT} \
+#         --email "youremail@gmail.com" \
+#         --max_cpus 64 \
+#         --kmer_size 55 \
+#         --or fr \
+#         --genome ${DATABASE}/"ensembl" \
+#         --mapper_index ${DATABASE}/"ensembl/hisat2_index/genome" \
+#         --bowtie2_index ${DATABASE}/"ensembl/bowtie2_index/genome" \
+#         --ntblastDB ${DATABASE}/"blastDBall_old/nt" \
+#         --fastqs "/Users/mame5141/2019/biome/chlamydia/RNAseq-Biome-master/fastqs" \
+#         --sample_table "sample_table.txt" \
+#         --unmappedPath ${PROJECT}/"unmapped"

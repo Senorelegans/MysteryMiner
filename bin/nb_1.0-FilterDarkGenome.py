@@ -37,6 +37,12 @@ def removeFile(filename):
     except OSError:
         pass
 
+def makeColDF(col_data):
+    df = pd.read_csv(col_data,sep="\t",names = ["sample","condition"])
+    condition_list = df["condition"].unique()
+    return df, condition_list
+
+
 class darkLASTDB():
     def __init__(self, NF_out, col_data, nr_db, cpus=4,percent_identity=60.0):
         self.NF_out = NF_out
@@ -63,7 +69,7 @@ class darkLASTDB():
         for c in self.cl:
             index_out = f'{self.wkdir}/lastdb/lastdb_index/lastdb_index_{c}'
             makeFolders([index_out])
-            fa = f'{self.wkdir}/afterVec/group/group_{c}_darkbiome.fasta'
+            fa = f'{self.wkdir}/afterNext/group/group_{c}_darkbiome.fasta'
             self.removeFaDup(fa)
             index_cmd = f'lastdb -cR01 {index_out}/group_{c} {fa}'
             subprocess.run(index_cmd, shell=True)
@@ -71,14 +77,14 @@ class darkLASTDB():
 
         index_out = f'{self.wkdir}/lastdb/lastdb_index/lastdb_index_all'
         makeFolders([index_out])
-        fa = f'{self.wkdir}/afterVec/all/all_darkbiome.fasta'
+        fa = f'{self.wkdir}/afterNext/all/all_darkbiome.fasta'
         index_cmd = f'lastdb -cR01 {index_out}/all {fa}'
         subprocess.run(index_cmd, shell=True)
         self.all.append(fa)
 
 
     def darkrunLast(self):
-        f_in = f'{self.wkdir}/afterVec/single/'
+        f_in = f'{self.wkdir}/afterNext/single/'
         out = f'{self.wkdir}/lastdb/lastdb_out/group_single'
         makeFolders([f'{self.wkdir}/lastdb/lastdb_out/',out])
         self.single = []

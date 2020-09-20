@@ -105,9 +105,9 @@ unmappedPath = params.unmappedPath
 }
 
 // Validate inputs
-if ( params.magicblastDB ){
-magicblastDB = params.magicblastDB
-}
+// if ( params.magicblastDB ){
+// magicblastDB = params.magicblastDB
+// }
 
 // Validate inputs
 if ( params.ntblastDB ){
@@ -460,16 +460,21 @@ process bowtie2 {
     memory '40 GB'
     time '24h'
 
-    publishDir "${unmappedPath}/bowtie2", mode: 'copy', pattern: "*.fastq"
-    publishDir "${unmappedPath}/final/filter/fastq/initial", mode: 'copy', pattern: "*count.txt"
 
+    publishDir "${unmappedPath}/bowtie2", mode: 'copy', pattern: "*.fastq"
+    publishDir "${unmappedPath}/final/filter/fastq/initial", mode: 'copy', pattern: "*initial_count.txt"
+    publishDir "${unmappedPath}/final_unmapped/single", mode: 'copy', pattern: "*{R1,R2}.fastq"
+    publishDir "${unmappedPath}/final/filter/fastq/bowtie2", mode: 'copy', pattern: "*bowtie2_count.txt"
 
     input:
     set val(condition), val(name), file(fastqs) from unmapped1
 
     output:
-    set val(condition), val(name), file("*.fastq") into unmapped_bowtie
     set val(name), file("*count.txt") into count1
+    set val("single"),  val(name), file("*.fastq") into unmapped_single
+    file("*.fastq") into unmapped_single_final_bowtie
+    set val(condition), val(name), file("*.fastq") into unmapped_single_copy
+    file("*.txt") into dummy_text
 
 
     print("Running bowtie2 remap")
@@ -490,7 +495,13 @@ process bowtie2 {
 
         rm ${name}_bowtie2.sam
         rm ${name}Unmapped.out.mate1
-        rm ${name}Unmapped.out.mate2       
+        rm ${name}Unmapped.out.mate2    
+
+        mv ${name}_unmapped.1.fastq ${name}_unmapped_R1.fastq
+        mv ${name}_unmapped.2.fastq ${name}_unmapped_R2.fastq   
+
+        wc -l ${name}_unmapped_R1.fastq > ${name}Unmapped_fastq_bowtie2_count.txt
+
         """
 
     } else {
@@ -504,142 +515,17 @@ process bowtie2 {
         --un ${name}_unmapped.fastq \
 
         wc -l ${name}Unmapped.out.mate1 > ${name}Unmapped_fastq_initial_count.txt
-        mv ${name}_unmapped.fastq ${name}_unmapped.1.fastq
+        mv ${name}_unmapped.fastq ${name}_unmapped_R1.fastq
 
         rm ${name}_bowtie2.sam
         rm ${name}Unmapped.out.mate1
-        """
-    }
 
-
-}
-
-
-process magicBlast {
-    tag "$name"
-    validExitStatus 0
-    cpus 20
-    maxForks 6
-    memory '100 GB'
-    time '24h'
-
-    publishDir "${unmappedPath}/final_unmapped/single", mode: 'copy', pattern: "*{R1,R2}.fastq"
-    publishDir "${unmappedPath}/filter/magicblast", mode: 'copy', pattern: "*.tsv"
-    publishDir "${unmappedPath}/final/filter/fastq/bowtie2", mode: 'copy', pattern: "*bowtie2_count.txt"
-    publishDir "${unmappedPath}/final/filter/fastq/magicblast", mode: 'copy', pattern: "*magicblast_count.txt"
-
-    input:
-    set val(condition), val(name), file(fastqs) from unmapped_bowtie
-
-    output:
-    set val("single"),  val(name), file("*.fastq") into unmapped_single
-    file("*.fastq") into unmapped_single_final_bowtie
-    set val(condition), val(name), file("*.fastq") into unmapped_single_copy
-    file("*.txt") into dummy_text
-    script:
-
-    if (!params.singleEnd) {
-        """
-        # Grab last 4000 lines of unmapped fastq so assembly wont break after magic blast
-        head -n +4000 ${name}_unmapped.1.fastq > ${name}_unmapped.1.fastq_rest
-        tail -n -4000 ${name}_unmapped.1.fastq > ${name}_unmapped.1.fastq_small
-        head -n +4000 ${name}_unmapped.2.fastq > ${name}_unmapped.2.fastq_rest
-        tail -n -4000 ${name}_unmapped.2.fastq > ${name}_unmapped.2.fastq_small      
-
-
-        magicblast \
-        -query ${name}_unmapped.1.fastq_rest \
-        -query_mate ${name}_unmapped.2.fastq_rest \
-        -db ${magicblastDB} \
-        -infmt fastq \
-        -outfmt tabular \
-        -num_threads 20 \
-        -no_unaligned \
-        -out ${name}_humanblast.tsv
+        wc -l ${name}_unmapped_R1.fastq > ${name}Unmapped_fastq_bowtie2_count.txt
         
-        
-        
-        wc -l ${name}_unmapped.1.fastq > ${name}Unmapped_fastq_bowtie2_count.txt
-
-        tail -n +4 ${name}_humanblast.tsv > ${name}_notail.tsv
-        cut -f 1 ${name}_notail.tsv > ${name}_col1.tsv
-        sort ${name}_col1.tsv > ${name}_sorted.tsv
-        uniq ${name}_sorted.tsv > ${name}_humanfastqID.txt
-        seqkit grep ${name}_unmapped.1.fastq -nv -f ${name}_humanfastqID.txt > ${name}_unmapped_R1.fastq.tmp
-        seqkit grep ${name}_unmapped.2.fastq -nv -f ${name}_humanfastqID.txt > ${name}_unmapped_R2.fastq.tmp
-
-        wc -l ${name}_unmapped_R1.fastq.tmp > ${name}Unmapped_fastq_magicblast_count.txt
-        
-        #Add back in some unmapped reads
-        cat ${name}_unmapped_R1.fastq.tmp ${name}_unmapped.1.fastq_small  > ${name}_unmapped_R1.fastq
-        cat ${name}_unmapped_R2.fastq.tmp ${name}_unmapped.2.fastq_small  > ${name}_unmapped_R2.fastq
-
-        rm ${name}_humanblast.tsv
-        rm ${name}_notail.tsv
-        rm ${name}_humanfastqID.txt
-        rm ${name}_col1.tsv
-        rm ${name}_sorted.tsv
-
-        rm ${name}_unmapped.1.fastq
-        rm ${name}_unmapped.1.fastq_rest
-        rm ${name}_unmapped.1.fastq_small
-        rm ${name}_unmapped_R1.fastq.tmp
-
-        rm ${name}_unmapped.2.fastq
-        rm ${name}_unmapped.2.fastq_rest
-        rm ${name}_unmapped.2.fastq_small
-        rm ${name}_unmapped_R2.fastq.tmp
-
-
-        """
-
-    } else {
-        """
-        head -n +4000 ${name}_unmapped.1.fastq > ${name}_unmapped.1.fastq_rest
-        tail -n -4000 ${name}_unmapped.1.fastq > ${name}_unmapped.1.fastq_small
-
-        magicblast \
-        -query ${name}_unmapped.1.fastq_rest \
-        -db ${magicblastDB} \
-        -infmt fastq \
-        -outfmt tabular \
-        -num_threads 20 \
-        -no_unaligned \
-        -out ${name}_humanblast.tsv
-
-        wc -l ${name}_unmapped.1.fastq > ${name}Unmapped_fastq_bowtie2_count.txt
-
-        tail -n +4 ${name}_humanblast.tsv > ${name}_notail.tsv
-        cut -f 1 ${name}_notail.tsv > ${name}_col1.tsv
-        sort ${name}_col1.tsv > ${name}_sorted.tsv
-        uniq ${name}_sorted.tsv > ${name}_humanfastqID.txt
-        seqkit grep ${name}_unmapped.1.fastq -nv -f ${name}_humanfastqID.txt > ${name}_unmapped_R1.fastq.tmp
         echo "dummy" >> ${name}_unmapped_R2.fastq
 
-        wc -l ${name}_unmapped_R1.fastq.tmp > ${name}Unmapped_fastq_magicblast_count.txt
-
-        #Add back in some unmapped reads
-        cat ${name}_unmapped_R1.fastq.tmp ${name}_unmapped.1.fastq_small > ${name}_unmapped_R1.fastq
-
-
-
-
-
-        rm ${name}_humanblast.tsv
-        rm ${name}_notail.tsv
-        rm ${name}_humanfastqID.txt
-        rm ${name}_col1.tsv
-        rm ${name}_sorted.tsv
-
-        rm ${name}_unmapped.1.fastq
-        rm ${name}_unmapped.1.fastq_rest
-        rm ${name}_unmapped.1.fastq_small
-        rm ${name}_unmapped_R1.fastq.tmp
-
-
         """
     }
-
 }
 
 
@@ -771,14 +657,12 @@ process spades {
     // instead made list of files
 
 
-
     if (!params.singleEnd) {
-
         R1 = filelist.toList()[0]
         R2 = filelist.toList()[1]
 
         """
-        source /Users/mame5141/.bashrc
+        #source /Users/mame5141/.bashrc
         spades.py \
         -t 48 \
         -m ${assembler_memory} \
@@ -788,7 +672,7 @@ process spades {
         -2 ${R2} \
         -o ${name}_spades
         mv ${name}_spades/transcripts.fasta ${name}_spades.fasta 
-        source /Users/mame5141/.bashrc2
+
         """
 
 
@@ -805,7 +689,6 @@ process spades {
         -s ${R1} \
         -o ${name}_spades
         mv ${name}_spades/transcripts.fasta ${name}_spades.fasta
-        source /Users/mame5141/.bashrc2 
         """
         }
 }
@@ -817,7 +700,7 @@ process blast {
 
     tag "$name"
     validExitStatus 0,1
-    maxForks 6
+    maxForks 12
     cpus 30
     queue "long"
     time { task.attempt <= 1 ? '90h' : '300h' }
@@ -836,7 +719,6 @@ process blast {
 
     script:
     """
-
     # Add in dummy fa sequences
     cat ${dummy_seq_fa} ${fa} > ${fa}_withdummy
 
@@ -857,7 +739,7 @@ process jgi {
     //echo true
     tag "$name"
     validExitStatus 0,1
-    cpus 6
+    cpus 12
     memory '40 GB'
     time '10h'
     maxForks 8
@@ -899,7 +781,7 @@ process concatFasta_Bowtie2Index {
     cpus 20
     memory '40 GB'
     time '10h'
-    maxForks 6
+    maxForks 12
 
     publishDir "${unmappedPath}/final/fasta/${condition}", mode: 'copy', pattern: "${condition}.fasta"
     publishDir "${unmappedPath}/final/bt2_index/${condition}", mode: 'copy', pattern: "*.bt*"
@@ -934,7 +816,7 @@ process bowtie_and_pileup {
     cpus 20
     memory '40 GB'
     time '24h'
-    maxForks 6
+    maxForks 12
 
     publishDir "${unmappedPath}/final/bam/${condition}", mode: 'copy', pattern: "*.bam"
     publishDir "${unmappedPath}/final/pileup/${condition}", mode: 'copy', pattern: "*_pileup.txt"
@@ -1003,19 +885,20 @@ process darkDust {
     cpus 20
     memory '40 GB'
     time '24h'    
-    maxForks 8
+    maxForks 12
 
 
     publishDir "${unmappedPath}/final/darkbiome/initial_dust_all/${condition}", mode: 'copy', pattern: "*"
     publishDir "${unmappedPath}/final/darkbiome/initial/${condition}", mode: 'copy', pattern: "*darkbiome_initial.fasta" 
     publishDir "${unmappedPath}/final/darkbiome/afterDust/${condition}", mode: 'copy', pattern: "*afterDust.fasta" 
-
+    publishDir "${unmappedPath}/final/darkbiome/afterNext/${condition}", mode: 'copy', pattern: "*_darkbiome.fasta" 
 
     input:
     set val(condition), val(name), file(fa), file(blast_tsv) from darkbiome
 
     output:
     set val(condition), val(name), file("*afterDust.fasta"), file(blast_tsv) into dustout
+    set val(condition), val(name), file("*_darkbiome.fasta"), file(blast_tsv) into darkbiome_out2
     set val(condition), val(name), file("*"), file(blast_tsv) into darkbiome_out_all
     script:    
 
@@ -1041,64 +924,64 @@ process darkDust {
     sort ${name}_dustname.txt > ${name}_dustnames.txt
 
     comm -23 ${name}_namecleans.txt ${name}_dustnames.txt > ${name}_afterDust.txt
-
     #extract fasta sequences that match clean contig list.
     seqtk subseq ${fa}_withdummy ${name}_afterDust.txt > ${name}_darkbiome_afterDust.fasta
+    cp ${name}_darkbiome_afterDust.fasta ${name}_darkbiome.fasta
     """            
 }
 
 
 
-process darkVector {
-    tag "$name"
-    validExitStatus 0
-    cpus 20
-    memory '40 GB'
-    time '24h'    
-    maxForks 8
+// process darkVector {
+//     tag "$name"
+//     validExitStatus 0
+//     cpus 20
+//     memory '40 GB'
+//     time '24h'    
+//     maxForks 8
 
 
-    publishDir "${unmappedPath}/final/darkbiome/afterVec/${condition}", mode: 'copy', pattern: "*darkbiome.fasta"
-    publishDir "${unmappedPath}/final/darkbiome/afterVec_all/${condition}", mode: 'copy', pattern: "*"
+//     publishDir "${unmappedPath}/final/darkbiome/afterVec/${condition}", mode: 'copy', pattern: "*darkbiome.fasta"
+//     publishDir "${unmappedPath}/final/darkbiome/afterVec_all/${condition}", mode: 'copy', pattern: "*"
 
-    input:
-    set val(condition), val(name), file(fa), file(blast_tsv) from dustout
+//     input:
+//     set val(condition), val(name), file(fa), file(blast_tsv) from dustout
 
-    output:
-    set val(condition), val(name), file("*_darkbiome.fasta"), file(blast_tsv) into darkbiome_out2
-    set val(condition), val(name), file("*"), file(blast_tsv) into darkbiome_out_all2
+//     output:
+//     set val(condition), val(name), file("*_darkbiome.fasta"), file(blast_tsv) into darkbiome_out2
+//     set val(condition), val(name), file("*"), file(blast_tsv) into darkbiome_out_all2
     
-    script:
-    """
-    cat ${dummy_seq_fa} ${fa} > ${fa}_withdummy
+//     script:
+//     """
+//     cat ${dummy_seq_fa} ${fa} > ${fa}_withdummy
 
 
-    blastn -db ${params.univecDB} \
-    -query ${fa}_withdummy \
-    -max_target_seqs 1 \
-    -outfmt 6 \
-    -out ${name}_vec.tab \
-    -num_threads 20 \
-    -reward 1 \
-    -penalty -5 \
-    -gapopen 3 \
-    -gapextend 3 \
-    -dust yes \
-    -soft_masking true \
-    -evalue 700 \
-    -searchsp 1750000000000
+//     blastn -db ${params.univecDB} \
+//     -query ${fa}_withdummy \
+//     -max_target_seqs 1 \
+//     -outfmt 6 \
+//     -out ${name}_vec.tab \
+//     -num_threads 20 \
+//     -reward 1 \
+//     -penalty -5 \
+//     -gapopen 3 \
+//     -gapextend 3 \
+//     -dust yes \
+//     -soft_masking true \
+//     -evalue 700 \
+//     -searchsp 1750000000000
 
 
-    cut -f 1 ${name}_vec.tab > ${name}_vec_name.txt
-    grep "^>" ${fa}_withdummy > ${name}_name.txt
-    awk 'sub(/^>/, "")' ${name}_name.txt > ${name}_name_clean.txt
-    sort ${name}_name_clean.txt > ${name}_name_cleansort.txt
-    sort ${name}_vec_name.txt > ${name}_vec_name_sort.txt
-    comm -23 ${name}_name_cleansort.txt ${name}_vec_name_sort.txt > ${name}_cleancontigs.txt
+//     cut -f 1 ${name}_vec.tab > ${name}_vec_name.txt
+//     grep "^>" ${fa}_withdummy > ${name}_name.txt
+//     awk 'sub(/^>/, "")' ${name}_name.txt > ${name}_name_clean.txt
+//     sort ${name}_name_clean.txt > ${name}_name_cleansort.txt
+//     sort ${name}_vec_name.txt > ${name}_vec_name_sort.txt
+//     comm -23 ${name}_name_cleansort.txt ${name}_vec_name_sort.txt > ${name}_cleancontigs.txt
 
-    seqtk subseq ${fa}_withdummy ${name}_cleancontigs.txt > ${name}_darkbiome.fasta
-    """
-}
+//     seqtk subseq ${fa}_withdummy ${name}_cleancontigs.txt > ${name}_darkbiome.fasta
+//     """
+// }
 
 
 /*
