@@ -1,8 +1,6 @@
-513_S37_L002	a
-492_S35_L002	a
-227_S32_L002	b
-200_S31_L002	b
-529_S38_L002	c
-500_S36_L002	c
-402_S33_L002	d
-403_S34_L002	d
+control1	control
+control2	control
+infected1	infected
+infected2	infected
+stress1	stress
+stress2	stress

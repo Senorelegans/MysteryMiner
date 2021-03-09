@@ -1,7 +1,7 @@
 #!/usr/bin/env nextflow
 /*
 ========================================================================================
-                         BiomeFlow PIPELINE
+                         MysteryMiner
 ========================================================================================
  #### Homepage / Documentation
  https://github.com/Dowell-Lab/RNA-seq-Flow
@@ -12,67 +12,20 @@ Thanks to Margaret Gruca <magr0763@colorado.edu> for commands from the RNA-seq f
 ========================================================================================
 ========================================================================================
 
-Pipeline steps:
-
-    1. Pre-processing sra/fastq
-        1a. SRA tools -- fasterq-dump sra to generate fastq file
-        1b. FastQC (pre-trim) -- perform pre-trim FastQC on fastq files
-
-    2. Trimming
-        2a. BBDuk -- trim fastq files for quality and adapters
-        2b. FastQC (post-trim) -- perform post-trim FastQC on fastq files (ensure trimming performs as expected)
-
-    3. Mapping w/ HISAT2 -- map to genome reference file
-
 */
 
 
 def helpMessage() {
     log.info"""
     =========================================
-     SteadyFlow v${params.version}
+     MysteryMiner v${params.version}
     =========================================
     Usage:
-
     The typical command for running the pipeline is as follows:
-
     nextflow run main.nf -profile slurm --fastqs '/project/*_{R1,R2}*.fastq' --outdir '/project/'
-
-    Required arguments:
-         -profile                      Configuration profile to use. <base, slurm>
-         --fastqs                      Directory pattern for fastq files: /project/*{R1,R2}*.fastq (Required if --sras not specified)
-         --sras                        Directory pattern for SRA files: /project/*.sras (Required if --fastqs not specified)
-         --workdir                     Nextflow working directory where all intermediate files are saved.
-         --email                       Where to send workflow report email.
-
-    Performance options:
-        --threadfqdump                 Runs multi-threading for fastq-dump for sra processing.
-
-    Input File options:
-        --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
-        --flip                         Reverse complements each strand. Necessary for some library preps.
-        --flipR2                       Reverse complements R2 only.       
-
-    Save options:
-        --outdir                       Specifies where to save the output from the nextflow run.
-        --savefq                       Compresses and saves raw fastq reads.
-        --saveTrim                     Compresses and saves trimmed fastq reads.
-        --skipBAM                      Skip saving BAM files. Only CRAM files will be saved with this option.
-        --saveAll                      Compresses and saves all fastq reads.
-
-    QC Options:
-        --skipMultiQC                  Skip running MultiQC.
-        --skipRSeQC                    Skip running RSeQC.
-        
-    Analysis Options:
-        --count                        Run RSeQC FPKM count over RefSeq annotated genes.
-
     """.stripIndent()
 }
 
-/*
- * SET UP CONFIGURATION VARIABLES
- */
 
 // Show help message
 params.help = false
@@ -128,9 +81,9 @@ or = params.or
     or = fr
 }
 
-if ( params.genome ){
-    genome = file(params.genome)
-    if( !genome.exists() ) exit 1, "Genome directory not found: ${params.genome}"
+if ( params.STAR_index ){
+    STAR_index = file(params.STAR_index)
+    if( !STAR_index.exists() ) exit 1, "STAR_index directory not found: ${params.STAR_index}"
 }
 
 
@@ -194,7 +147,7 @@ summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
 if(params.fastqs) summary['Fastqs']   = params.fastqs
 if(params.sras) summary['SRAs']       = params.sras
-summary['Genome Ref']       = params.genome
+summary['STAR_index Ref']       = params.STAR_index
 summary['Mapper Index']     = params.mapper_index
 summary['Bowtie2 Index']    = params.bowtie2_index
 summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
@@ -257,8 +210,6 @@ process get_software_versions {
     echo $workflow.nextflow.version > v_nextflow.txt
     fastqc --version > v_fastqc.txt
     bbversion.sh --version > v_bbduk.txt
-    samtools --version > v_samtools.txt
-    bedtools --version > v_bedtools.txt
 
     for X in `ls *.txt`; do
         cat \$X >> all_versions.txt;
@@ -300,10 +251,6 @@ process fastQC {
         > ${prefix}.fastqc_stats.txt    
     """
 }
-
-
-
-
 
 
 process trim {
@@ -415,7 +362,7 @@ process star {
         """
         echo ${name}
 
-        STAR --genomeDir ${genome} \
+        STAR --genomeDir ${STAR_index} \
         --readFilesIn ${name}_R1.trim.fastq.gz ${name}_R2.trim.fastq.gz \
         --readFilesCommand zcat \
         --runThreadN 20 \
@@ -434,7 +381,7 @@ process star {
         """
         echo ${name}
 
-        STAR --genomeDir ${genome} \
+        STAR --genomeDir ${STAR_index} \
         --readFilesIn ${name}_R1.trim.fastq.gz \
         --runThreadN 32 \
         --readFilesCommand zcat \
@@ -932,58 +879,6 @@ process darkDust {
 
 
 
-// process darkVector {
-//     tag "$name"
-//     validExitStatus 0
-//     cpus 20
-//     memory '40 GB'
-//     time '24h'    
-//     maxForks 8
-
-
-//     publishDir "${unmappedPath}/final/darkbiome/afterVec/${condition}", mode: 'copy', pattern: "*darkbiome.fasta"
-//     publishDir "${unmappedPath}/final/darkbiome/afterVec_all/${condition}", mode: 'copy', pattern: "*"
-
-//     input:
-//     set val(condition), val(name), file(fa), file(blast_tsv) from dustout
-
-//     output:
-//     set val(condition), val(name), file("*_darkbiome.fasta"), file(blast_tsv) into darkbiome_out2
-//     set val(condition), val(name), file("*"), file(blast_tsv) into darkbiome_out_all2
-    
-//     script:
-//     """
-//     cat ${dummy_seq_fa} ${fa} > ${fa}_withdummy
-
-
-//     blastn -db ${params.univecDB} \
-//     -query ${fa}_withdummy \
-//     -max_target_seqs 1 \
-//     -outfmt 6 \
-//     -out ${name}_vec.tab \
-//     -num_threads 20 \
-//     -reward 1 \
-//     -penalty -5 \
-//     -gapopen 3 \
-//     -gapextend 3 \
-//     -dust yes \
-//     -soft_masking true \
-//     -evalue 700 \
-//     -searchsp 1750000000000
-
-
-//     cut -f 1 ${name}_vec.tab > ${name}_vec_name.txt
-//     grep "^>" ${fa}_withdummy > ${name}_name.txt
-//     awk 'sub(/^>/, "")' ${name}_name.txt > ${name}_name_clean.txt
-//     sort ${name}_name_clean.txt > ${name}_name_cleansort.txt
-//     sort ${name}_vec_name.txt > ${name}_vec_name_sort.txt
-//     comm -23 ${name}_name_cleansort.txt ${name}_vec_name_sort.txt > ${name}_cleancontigs.txt
-
-//     seqtk subseq ${fa}_withdummy ${name}_cleancontigs.txt > ${name}_darkbiome.fasta
-//     """
-// }
-
-
 /*
  * STEP 6 - MultiQC
  */
@@ -1000,10 +895,6 @@ process multiQC {
     file multiqc_config
     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
     file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
-    //file ('qc/trimstats/*') from trim_stats.collect()
-    //file ('qc/star_mapstats/*') from bam_flagstat.collect()
-    //file ('qc/rseqc/*') from rseqc_results.collect()
-    //file ('qc/preseq/*') from preseq_results.collect()
     file ('software_versions/*') from software_versions_yaml
     file ('qc/star_mapstats/*') from star_mapstats.collect()
 
